@@ -1,4 +1,3 @@
-
 name: SmrodoBot Alerts
 
 on:
@@ -9,11 +8,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: smrodobot-forecast
+  cancel-in-progress: false
+
 jobs:
   check-forecast:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,8 +25,23 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Restore alert history
+        uses: actions/cache/restore@v4
+        with:
+          path: alert_state.json
+          key: smrodobot-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            smrodobot-state-
+
       - name: Run SmrodoBot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python alert.py
+
+      - name: Save alert history
+        if: success() && hashFiles('alert_state.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: alert_state.json
+          key: smrodobot-state-${{ github.run_id }}-${{ github.run_attempt }}
