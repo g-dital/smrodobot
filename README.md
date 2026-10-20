@@ -10,7 +10,7 @@ Bot działa w chmurze przez **GitHub Actions** — nie trzeba mieć włączonego
 
 | Rodzaj | Kiedy | Warunek |
 | --- | --- | --- |
-| ☀️ Raport poranny | Przy uruchomieniu bota między **08:00 a 09:59**, czasu polskiego | Codziennie, jeśli prognoza jest dostępna i aktualna; maksymalnie raz na dzień według zapisanej historii |
+| ☀️ Raport poranny | Przy uruchomieniu bota między **08:00 a 08:59**, czasu polskiego | Codziennie, jeśli prognoza jest dostępna i aktualna; maksymalnie raz na dzień według zapisanej historii |
 | ⚠️ Alert dzienny | Podczas sprawdzania między **08:00 a 20:59** | Nowa godzina z `p_elevated >= 0.5` w ciągu kolejnych **2 godzin** |
 | 🌙 Ostrzeżenie nocne | Podczas sprawdzania między **21:00 a 22:59** | Co najmniej jedna godzina z `p_elevated >= 0.5` w przedziale **22:00–08:00** następnego dnia |
 
