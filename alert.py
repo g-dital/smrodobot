@@ -72,8 +72,8 @@ def main():
     rows = forecast_rows(data, now)
     place = data.get('location', location)
 
-# Morning report, sent once between 07:00 and 08:59 local time.
-if 7 <= now.hour < 9 and state.get('last_daily_report') != today:
+    # Morning report, sent once between 07:00 and 08:59 local time.
+    if 7 <= now.hour < 9 and state.get('last_daily_report') != today:
         remaining = [r for r in rows if r[0].date() == now.date() and r[0] >= now]
         lines = [f'🦆 SmrodoBot — raport poranny ({now:%d.%m})', f'📍 {place}', '📅 Dzisiaj, do końca dnia', '']
         if remaining:
