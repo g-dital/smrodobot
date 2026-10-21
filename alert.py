@@ -12,7 +12,12 @@ STATE_FILE = Path('alert_state.json')
 
 
 def request_json(url, data=None):
-    req = urllib.request.Request(url, data=data, headers={'User-Agent': 'SmrodoBot/0.3', 'Accept': 'application/json'}, method='POST' if data is not None else 'GET')
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={'User-Agent': 'SmrodoBot/0.4', 'Accept': 'application/json'},
+        method='POST' if data is not None else 'GET',
+    )
     with urllib.request.urlopen(req, timeout=30) as response:
         return json.load(response)
 
@@ -57,6 +62,36 @@ def forecast_rows(data, now):
     return sorted(rows, key=lambda row: row[0])
 
 
+def hour_key(hour):
+    # Include UTC offset to distinguish repeated local hours at DST transitions.
+    return hour.isoformat(timespec='minutes')
+
+
+def recent_notified(values, now):
+    cutoff = now - timedelta(days=2)
+    result = set()
+    for value in values if isinstance(values, list) else []:
+        if not isinstance(value, str):
+            continue
+        try:
+            parsed = datetime.fromisoformat(value)
+            if parsed.tzinfo is not None and parsed >= cutoff:
+                result.add(value)
+        except ValueError:
+            # Accept legacy keys from v0.3 until they naturally expire.
+            try:
+                legacy = datetime.strptime(value, '%Y-%m-%dT%H').replace(tzinfo=TZ)
+                if legacy >= cutoff:
+                    result.add(value)
+            except ValueError:
+                continue
+    return result
+
+
+def already_notified(hour, notified):
+    return hour_key(hour) in notified or hour.strftime('%Y-%m-%dT%H') in notified
+
+
 def main():
     now = datetime.now(TZ)
     today = now.date().isoformat()
@@ -89,21 +124,31 @@ def main():
         save_state(state)
         print('Morning report sent')
 
-    # Evening warning for the upcoming night (22:00 to 08:00).
-    if 21 <= now.hour < 23 and state.get('last_night_check') != today:
+    # Check repeatedly from 21:00 to 22:59, notify only newly risky hours.
+    if 21 <= now.hour < 23:
         start = datetime.combine(now.date(), time(22), tzinfo=TZ)
         end = datetime.combine(now.date() + timedelta(days=1), time(8), tzinfo=TZ)
         overnight = [r for r in rows if start <= r[0] < end and r[1] >= 0.5]
-        if overnight:
-            peak = max(overnight, key=lambda r: r[1])
-            hours = ', '.join(f'{r[0]:%H:%M}' for r in overnight)
-            send_message(f'🌙 SmrodoBot — ostrzeżenie na noc!\n📍 {place}\n🔴 Godziny wysokiego modelowanego ryzyka: {hours}\n📈 Maksymalny udział scenariuszy: {peak[1]:.0%}\n🪟 Rozważ zamknięcie okien przed snem.\nPrognoza modelowa, nie pomiar.')
-            print('Night warning sent')
+        notified_night = recent_notified(state.get('notified_night_hours', []), now)
+        new_night = [r for r in overnight if not already_notified(r[0], notified_night)]
+        if new_night:
+            peak = max(new_night, key=lambda r: r[1])
+            hours = ', '.join(f'{r[0]:%H:%M}' for r in new_night)
+            send_message(
+                f'🌙 SmrodoBot — ostrzeżenie na noc!\n📍 {place}\n'
+                f'🔴 Nowe godziny wysokiego modelowanego ryzyka: {hours}\n'
+                f'📈 Maksymalny udział scenariuszy: {peak[1]:.0%}\n'
+                '🪟 Rozważ zamknięcie okien przed snem.\n'
+                'Prognoza modelowa, nie pomiar. Pokazano wybrane godziny z API.'
+            )
+            notified_night.update(hour_key(r[0]) for r in new_night)
+            state['notified_night_hours'] = sorted(notified_night)
+            save_state(state)
+            print(f'Night warning sent for {len(new_night)} new hours')
         else:
-            print('No high-risk hours in overnight forecast subset')
-        # Store check date even if no warning; avoids repeated warnings on same evening.
-        state['last_night_check'] = today
-        save_state(state)
+            state['notified_night_hours'] = sorted(notified_night)
+            save_state(state)
+            print('No new high-risk overnight hours')
 
     # Daytime alerts only, looking two hours ahead.
     if not (8 <= now.hour < 21):
@@ -112,14 +157,19 @@ def main():
 
     horizon = now + timedelta(hours=2)
     risky = [r for r in rows if now <= r[0] <= horizon and r[1] >= 0.5]
-    cutoff = (now - timedelta(days=2)).strftime('%Y-%m-%dT%H')
-    notified = {h for h in state.get('notified_hours', []) if isinstance(h, str) and h >= cutoff}
-    new = [r for r in risky if r[0].strftime('%Y-%m-%dT%H') not in notified]
+    notified = recent_notified(state.get('notified_hours', []), now)
+    new = [r for r in risky if not already_notified(r[0], notified)]
     if new:
         first = new[0][0]
         peak = max(new, key=lambda r: r[1])
-        send_message(f'⚠️ SmrodoBot — wysokie ryzyko w ciągu 2 godzin!\n📍 {place}\n🕒 Najbliższa nowa godzina: {first:%d.%m %H:%M}\n📈 Najwyższy udział scenariuszy: {peak[1]:.0%}\n🌬️ Wiatr: {peak[2].get("wind", "brak danych")}\nPrognoza modelowa, nie pomiar.')
-        notified.update(r[0].strftime('%Y-%m-%dT%H') for r in risky)
+        send_message(
+            f'⚠️ SmrodoBot — wysokie ryzyko w ciągu 2 godzin!\n📍 {place}\n'
+            f'🕒 Najbliższa nowa godzina: {first:%d.%m %H:%M}\n'
+            f'📈 Najwyższy udział scenariuszy: {peak[1]:.0%}\n'
+            f'🌬️ Wiatr: {peak[2].get("wind", "brak danych")}\n'
+            'Prognoza modelowa, nie pomiar.'
+        )
+        notified.update(hour_key(r[0]) for r in risky)
         print('Daytime alert sent')
     else:
         print('No new high-risk daytime hours')
