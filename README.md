@@ -1,4 +1,4 @@
-# 🦆 SmrodoBot v0.3
+# 🦆 SmrodoBot v0.4
 
 **Telegramowe powiadomienia o modelowanym ryzyku uciążliwych zapachów w Krakowie**, oparte na prognozie serwisu [Zapach Krakowa](https://zapachkrakowa.pl/).
 
@@ -20,7 +20,7 @@ SmrodoBot działa automatycznie w **GitHub Actions** — bez własnego serwera, 
 - Raport poranny pokazuje godziny wyróżnione przez model (🔴 od 50%, 🟡 od 25% do poniżej 50%, 🟢 poniżej 25%). To **nie jest pełna lista wszystkich godzin dnia**.
 - Alert dzienny jest wysyłany tylko dla godzin ryzyka, których bot nie zapisał wcześniej jako zgłoszone.
 - Jeśli wieczorna kontrola nie wykryje godzin spełniających próg, bot **nie wysyła** wiadomości nocnej.
-- **Ważne ograniczenie v0.3:** po pierwszej udanej kontroli nocnej bot zapisuje datę jej wykonania, również gdy nie wykryje ryzyka. Jeśli prognoza zmieni się później tego samego wieczoru, bot może **nie wysłać kolejnego ostrzeżenia nocnego**.
+- **Nowość v0.4:** bot sprawdza ryzyko nocne przy każdym uruchomieniu w oknie 21:00–22:59. Jeśli późniejsza prognoza pokaże **nowe godziny** z ryzykiem co najmniej 50%, wyśle kolejne ostrzeżenie tylko dla tych godzin. Nie powtarza wcześniej zgłoszonych godzin, o ile historia została prawidłowo przywrócona z cache. Zmiana samego poziomu ryzyka dla już zgłoszonej godziny nie powoduje kolejnej wiadomości.
 - Bot nie wysyła alertów dziennych po 21:00.
 
 Harmonogram jest uruchamiany nominalnie **co 30 minut**. GitHub Actions może opóźnić lub pominąć uruchomienie — podane przedziały są oknami działania kodu, **nie gwarantowanymi godzinami dostarczenia wiadomości**.
@@ -111,15 +111,28 @@ Sprawdź, czy API obsługuje wybrany adres i czy zwrócona lokalizacja jest praw
 | --- | --- |
 | `Morning report sent` | Wysłano raport poranny |
 | `Daytime alert sent` | Wysłano alert dzienny |
-| `Night warning sent` | Wysłano ostrzeżenie nocne |
+| `Night warning sent for N new hours` | Wysłano ostrzeżenie nocne dla N nowych godzin |
 | `No new high-risk daytime hours` | Nie ma nowych godzin do zgłoszenia w dziennym oknie |
-| `No high-risk hours in overnight forecast subset` | Wieczorna kontrola nie znalazła godzin powyżej progu w zwróconym zestawie |
+| `No new high-risk overnight hours` | Brak nowych godzin nocnego ryzyka do zgłoszenia (mogą istnieć już zgłoszone godziny) |
 | `Outside daytime alert window` | Uruchomienie odbyło się poza godzinami alertów dziennych |
 | `Forecast unavailable or stale; no messages sent` | Brak dostępnej prognozy lub dane starsze niż 6 godzin |
 
 **Zielony status GitHub Actions nie oznacza, że Telegram musi otrzymać wiadomość.** Bot może zakończyć działanie prawidłowo, nie wysyłając niczego — np. poza oknem raportu lub bez nowych godzin ryzyka.
 
-### 7. Zostaw harmonogram włączony
+### 7. Automatyczne testy (v0.4)
+
+Repozytorium zawiera osobny plik `test_alert.py`. Workflow uruchamia testy **przed** właściwym botem:
+
+```yaml
+- name: Run automated tests
+  run: python -m unittest -v test_alert.py
+```
+
+W logach kroku **Run automated tests** oczekiwany wynik to `Ran 8 tests` oraz `OK`. Testy używają symulowanych odpowiedzi API i wiadomości Telegram, więc **nie wysyłają rzeczywistych powiadomień**. Obejmują m.in. raport poranny, alerty dzienne, powtarzanie kontroli nocnych, ograniczanie duplikatów i nieaktualną prognozę.
+
+Jeśli testy się nie powiodą, GitHub Actions nie przejdzie do kroku **Run SmrodoBot**. Testy sprawdzają wybrane scenariusze, a nie gwarantują poprawnego działania API, Telegrama czy harmonogramu w każdej sytuacji.
+
+### 8. Zostaw harmonogram włączony
 
 Workflow zawiera:
 
@@ -137,8 +150,10 @@ GitHub może opóźniać lub pomijać zaplanowane uruchomienia. W nieaktywnych p
 Skrypt zapisuje lokalny plik `alert_state.json`, m.in. z polami:
 
 - `last_daily_report` — data ostatniego raportu porannego;
-- `last_night_check` — data wykonania kontroli nocnej;
+- `notified_night_hours` — zgłoszone wcześniej godziny nocnego ryzyka;
 - `notified_hours` — zgłoszone wcześniej godziny alertów dziennych.
+
+W v0.4 klucze godzin zawierają również informację o przesunięciu strefy czasowej, co pomaga rozróżniać godziny przy jesiennej zmianie czasu. Skrypt potrafi także odczytać starsze wpisy historii alertów dziennych z v0.3.
 
 GitHub Actions przywraca i zapisuje ten plik za pomocą **Actions Cache**. W logach możesz zobaczyć `Cache restored successfully`.
 
@@ -164,7 +179,7 @@ GitHub Actions może opóźniać zaplanowane uruchomienia. SmrodoBot wysyła rap
 Sprawdź log kroku **Run SmrodoBot**. Brak wiadomości może być prawidłowy: poza oknem raportu, bez nowego ryzyka lub po wcześniejszym wysłaniu powiadomienia.
 
 **Workflow jest czerwony (`Failure`)**  
-Otwórz nieudane uruchomienie → **check-forecast → Run SmrodoBot**. Znajdź `Traceback`, `Error` lub `IndentationError`. W przypadku błędu wcięć sprawdź spacje w `alert.py`. Same ostrzeżenia o przestarzałej wersji Node.js nie muszą być przyczyną niepowodzenia.
+Otwórz nieudane uruchomienie → **check-forecast → Run SmrodoBot**. Znajdź `Traceback`, `Error` lub `IndentationError`. Jeśli nie powiodło się **Run automated tests**, najpierw otwórz ten krok. W przypadku błędu wcięć sprawdź spacje w `alert.py`. Same ostrzeżenia o przestarzałej wersji Node.js nie muszą być przyczyną niepowodzenia.
 
 **`Cache not found`**  
 Przy pierwszym uruchomieniu jest to normalne. Jeśli pojawia się stale, sprawdź kroki **Restore alert history** i **Save alert history**.
@@ -176,7 +191,14 @@ Sprawdź kroki cache. Historia nie jest przechowywana w trwałej bazie danych.
 Upewnij się, że wysłano `/start` do bota, oba sekrety są poprawne, Chat ID wskazuje właściwy czat, a prognoza jest aktualna.
 
 **Nie przychodzi ostrzeżenie nocne**  
-W obecnej wersji wiadomość nocna jest warunkowa. Bot może nie wykryć godzin powyżej progu w zestawie `riskiest_hours`; ponadto po zapisaniu wieczornej kontroli nie sprawdza ponownie tej samej nocy. Brak ostrzeżenia **nie oznacza bezpieczeństwa**.
+Wiadomość nocna jest warunkowa: pojawia się wyłącznie przy wykryciu **nowych** godzin z `p_elevated >= 0.5` w wybranych godzinach `riskiest_hours`. Bot ponawia kontrolę między 21:00 a 22:59, ale nie wysyła nocnych wiadomości poza tym oknem. Sprawdź też, czy GitHub Actions uruchamia się zgodnie z harmonogramem. Brak ostrzeżenia **nie oznacza bezpieczeństwa**.
+
+## 🆕 Co zmieniło się w v0.4?
+
+- Nocna prognoza jest sprawdzana wielokrotnie między 21:00 a 22:59; nowe godziny ryzyka mogą wywołać kolejne ostrzeżenie.
+- Oddzielna historia `notified_night_hours` ogranicza duplikaty ostrzeżeń nocnych.
+- Uporządkowano zapis i odczyt historii godzin alertów dziennych, z zachowaniem kompatybilności ze starszym formatem.
+- Dodano osiem automatycznych testów uruchamianych przed botem w GitHub Actions.
 
 ## 🤝 Udostępnianie projektu
 
@@ -184,5 +206,5 @@ Najprościej: udostępnij link do [szablonu SmrodoBot](https://github.com/g-dita
 
 ---
 
-**SmrodoBot v0.3** · Python 3.12 · GitHub Actions · Telegram Bot API · Zapach Krakowa  
+**SmrodoBot v0.4** · Python 3.12 · GitHub Actions · Telegram Bot API · Zapach Krakowa  
 Projekt eksperymentalny — nie zastępuje oficjalnych informacji ani pomiarów środowiskowych.
