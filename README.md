@@ -1,108 +1,111 @@
 # 🦆 SmrodoBot v0.3
 
-**Telegramowe powiadomienia o modelowanym ryzyku uciążliwych zapachów w Krakowie**, na podstawie prognozy serwisu [Zapach Krakowa](https://zapachkrakowa.pl/).
+**Telegramowe powiadomienia o modelowanym ryzyku uciążliwych zapachów w Krakowie**, oparte na prognozie serwisu [Zapach Krakowa](https://zapachkrakowa.pl/).
 
-Bot działa w chmurze przez **GitHub Actions** — nie trzeba mieć włączonego komputera ani własnego serwera. To projekt społecznościowy / prywatny, nie oficjalny system ostrzegania.
+SmrodoBot działa automatycznie w **GitHub Actions** — bez własnego serwera, włączonego komputera i lokalnej instalacji Pythona. Projekt jest niezależnym, eksperymentalnym narzędziem, a **nie oficjalnym systemem ostrzegania**.
 
-> **Ważne:** to prognoza modelowa, nie pomiar jakości powietrza ani gwarancja wystąpienia lub braku zapachu. API może zwracać tylko wybrane najbardziej ryzykowne godziny. Brak godziny na liście **nie oznacza**, że jest bezpiecznie.
+> [!IMPORTANT]
+> Bot korzysta z **prognozy modelowej**, a nie z pomiaru zapachu. API może zwracać tylko wybrane godziny o najwyższym modelowanym ryzyku (`riskiest_hours`), a nie kompletną prognozę godzinową. **Brak godziny na liście lub brak wiadomości od bota nie oznacza braku zagrożenia.**
 
-## Jakie wiadomości otrzymasz?
+## 🔔 Jakie powiadomienia wysyła bot?
 
-| Rodzaj | Kiedy | Warunek |
+| Powiadomienie | Kiedy bot je sprawdza (czas polski) | Kiedy wysyła wiadomość |
 | --- | --- | --- |
-| ☀️ Raport poranny | Przy uruchomieniu bota między **07:00 a 08:59**, czasu polskiego | Codziennie, jeśli prognoza jest dostępna i aktualna; maksymalnie raz na dzień według zapisanej historii |
-| ⚠️ Alert dzienny | Podczas sprawdzania między **08:00 a 20:59** | Nowa godzina z `p_elevated >= 0.5` w ciągu kolejnych **2 godzin** |
-| 🌙 Ostrzeżenie nocne | Podczas sprawdzania między **21:00 a 22:59** | Co najmniej jedna godzina z `p_elevated >= 0.5` w przedziale **22:00–08:00** następnego dnia |
+| ☀️ **Raport poranny** | **07:00–08:59** | Raz dziennie, przy pierwszym udanym uruchomieniu w tym oknie, jeśli prognoza jest dostępna i aktualna; pokazuje wyróżnione przez model godziny do końca dnia |
+| ⚠️ **Alert dzienny** | **08:00–20:59** | Jeśli wśród godzin zwróconych przez API pojawi się nowa godzina z `p_elevated >= 0.5` w ciągu najbliższych **2 godzin** |
+| 🌙 **Ostrzeżenie nocne** | **21:00–22:59** | Jeśli wśród godzin zwróconych przez API występuje `p_elevated >= 0.5` między **22:00 a 08:00 następnego dnia** |
 
-Jeśli nie ma wysokiego ryzyka na noc, bot nie wysyła wiadomości wieczornej. Nocą nadal uruchamia się harmonogram, ale bieżąca wersja nie wysyła nowych alertów dziennych po 21:00 ani nie ponawia nocnej kontroli po zapisaniu jej wyniku.
+**Jak to działa w praktyce?**
 
-**Uwaga o dokładności czasu:** harmonogram GitHub Actions działa co 30 minut, ale wykonania mogą być opóźnione lub pominięte. Godziny 08:00 i 21:00 oznaczają okna czasowe, nie gwarantowany moment doręczenia.
+- Raport poranny pokazuje godziny wyróżnione przez model (🔴 od 50%, 🟡 od 25% do poniżej 50%, 🟢 poniżej 25%). To **nie jest pełna lista wszystkich godzin dnia**.
+- Alert dzienny jest wysyłany tylko dla godzin ryzyka, których bot nie zapisał wcześniej jako zgłoszone.
+- Jeśli wieczorna kontrola nie wykryje godzin spełniających próg, bot **nie wysyła** wiadomości nocnej.
+- **Ważne ograniczenie v0.3:** po pierwszej udanej kontroli nocnej bot zapisuje datę jej wykonania, również gdy nie wykryje ryzyka. Jeśli prognoza zmieni się później tego samego wieczoru, bot może **nie wysłać kolejnego ostrzeżenia nocnego**.
+- Bot nie wysyła alertów dziennych po 21:00.
 
-## Co jest potrzebne?
+Harmonogram jest uruchamiany nominalnie **co 30 minut**. GitHub Actions może opóźnić lub pominąć uruchomienie — podane przedziały są oknami działania kodu, **nie gwarantowanymi godzinami dostarczenia wiadomości**.
 
-- Konto [GitHub](https://github.com/).
-- Konto Telegram.
-- Pliki projektu: `alert.py` oraz `.github/workflows/alert.yml`.
+## 🧰 Czego potrzebujesz?
+
+- Konta [GitHub](https://github.com/).
+- Konta Telegram.
 - Około 10–15 minut na konfigurację.
-- Nie potrzeba instalować Pythona na własnym komputerze.
 
-## Instrukcja: uruchom własnego SmrodoBota
+Nie musisz instalować Pythona na komputerze ani kupować serwera.
 
-### 1. Utwórz własne repozytorium
+## 🚀 Uruchom własnego SmrodoBota
 
-Najprościej: otwórz repozytorium projektu na GitHubie i użyj **Fork** (jeśli właściciel udostępnił repozytorium). Alternatywnie utwórz nowe repozytorium i wgraj do niego:
+### 1. Utwórz repozytorium z szablonu
 
-```text
-smrodobot/
-├── alert.py
-└── .github/
-    └── workflows/
-        └── alert.yml
-```
+1. Otwórz [repozytorium SmrodoBot](https://github.com/g-dital/smrodobot).
+2. Kliknij **Use this template → Create a new repository**.
+3. Wybierz nazwę i widoczność swojego repozytorium, a następnie kliknij **Create repository**.
 
-**Ważne:** plik workflow musi być dokładnie pod ścieżką `.github/workflows/alert.yml`, a nie obok `alert.py`.
+Szablon zawiera `alert.py` i `.github/workflows/alert.yml`. **Sekrety Telegrama nie są kopiowane** — skonfigurujesz je osobno.
 
-### 2. Utwórz bota na Telegramie
+### 2. Utwórz bota w Telegramie
 
-1. W Telegramie otwórz oficjalnego **[@BotFather](https://t.me/BotFather)**.
+1. Otwórz oficjalne konto [@BotFather](https://t.me/BotFather).
 2. Wyślij `/newbot` i wykonaj instrukcje.
-3. Skopiuj otrzymany **token API** — będzie potrzebny w GitHub Secrets.
-4. Otwórz swojego nowego bota i kliknij **Start** albo wyślij `/start`. Bot nie może rozpocząć prywatnej rozmowy, zanim sam do niego nie napiszesz.
+3. Zachowaj otrzymany **token API**.
+4. Otwórz nowego bota i wyślij `/start`.
 
-**Nigdy nie umieszczaj tokenu w `alert.py`, README, zrzutach ekranu ani publicznym repozytorium.**
+**Nie publikuj tokenu** w kodzie, README, issue ani na zrzutach ekranu.
 
-### 3. Znajdź swój Telegram Chat ID
+### 3. Odczytaj Telegram Chat ID
 
-Po wysłaniu `/start` otwórz w przeglądarce adres (wstaw swój token):
+Po wysłaniu `/start` otwórz w przeglądarce (wstaw swój token):
 
 ```text
 https://api.telegram.org/bot<TWOJ_TOKEN>/getUpdates
 ```
 
-W odpowiedzi JSON znajdź pole `message.chat.id` (lub `chat.id` w odpowiedniej aktualizacji). To Twój **Chat ID**, zwykle liczba. Jeśli lista `result` jest pusta, napisz do bota jeszcze jedną wiadomość i odśwież stronę.
+W odpowiedzi JSON znajdź `message.chat.id` — to identyfikator czatu, do którego bot ma wysyłać wiadomości. Jeśli `result` jest pusty, napisz do bota kolejną wiadomość i odśwież stronę. Przy aktywnym webhooku metoda `getUpdates` może nie zadziałać.
 
-**Uwaga:** URL zawiera tajny token — nie udostępniaj go i nie wklejaj do publicznych zgłoszeń. Jeśli bot używa webhooka lub aktualizacje zostały już pobrane przez inny proces, `getUpdates` może nie pokazać oczekiwanej wiadomości.
+> [!CAUTION]
+> Adres powyżej zawiera Twój tajny token. Nie udostępniaj pełnego adresu ani odpowiedzi zawierającej wrażliwe dane.
 
-### 4. Dodaj sekrety w GitHubie
+### 4. Dodaj sekrety w GitHub
 
-W swoim repozytorium przejdź do:
+W **swoim** repozytorium otwórz:
 
 **Settings → Secrets and variables → Actions → New repository secret**
 
-Dodaj dokładnie dwa sekrety:
+Utwórz dwa sekrety:
 
-| Nazwa | Wartość |
+| Nazwa sekretu | Wartość |
 | --- | --- |
-| `TELEGRAM_BOT_TOKEN` | Token od BotFather |
-| `TELEGRAM_CHAT_ID` | Twój numer `chat.id` |
+| `TELEGRAM_BOT_TOKEN` | Token otrzymany od BotFather |
+| `TELEGRAM_CHAT_ID` | Wartość `chat.id` z Telegrama |
 
-Nie dodawaj ich jako zwykłych zmiennych ani bezpośrednio do plików.
+Użyj **Repository secrets**, a nie publicznych zmiennych repozytorium.
 
 ### 5. Wybierz lokalizację (opcjonalnie)
 
-Domyślnie bot sprawdza **`Gliniana, Podgórze`**.
+Domyślnie skrypt odpytuje API dla adresu **`Gliniana, Podgórze`**.
 
-Aby używać innego adresu, edytuj `.github/workflows/alert.yml` i w kroku `Run SmrodoBot` dodaj `WATCH_ADDRESS`:
+Aby zmienić adres, edytuj `.github/workflows/alert.yml`. W kroku **Run SmrodoBot** dodaj `WATCH_ADDRESS`:
 
 ```yaml
-env:
-  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-  WATCH_ADDRESS: 'Twoja ulica, Kraków'
-run: python alert.py
+- name: Run SmrodoBot
+  env:
+    TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+    TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    WATCH_ADDRESS: 'Twoja ulica, Kraków'
+  run: python alert.py
 ```
 
-Adres musi być obsługiwany przez API. Sprawdź, czy odpowiedź rzeczywiście odpowiada wybranej lokalizacji.
+Sprawdź, czy API obsługuje wybrany adres i czy zwrócona lokalizacja jest prawidłowa. Nie wpisuj dokładnego prywatnego adresu do publicznego repozytorium, jeśli nie chcesz go ujawniać.
 
-### 6. Włącz i przetestuj GitHub Actions
+### 6. Uruchom test
 
 1. Otwórz **Actions → SmrodoBot Alerts**.
-2. Jeśli GitHub o to poprosi, włącz workflows w repozytorium.
-3. Wybierz **Run workflow → Run workflow**.
-4. Wejdź do zakończonego uruchomienia → **check-forecast → Run SmrodoBot**.
-5. Sprawdź logi oraz Telegram.
+2. Jeśli GitHub poprosi o włączenie workflow, zatwierdź.
+3. Kliknij **Run workflow → Run workflow**.
+4. Otwórz nowe uruchomienie, a następnie **check-forecast → Run SmrodoBot**.
+5. Sprawdź komunikaty w logach oraz wiadomości w Telegramie.
 
-Przykładowe logi:
+**Przykładowe komunikaty:**
 
 | Log | Znaczenie |
 | --- | --- |
@@ -110,62 +113,76 @@ Przykładowe logi:
 | `Daytime alert sent` | Wysłano alert dzienny |
 | `Night warning sent` | Wysłano ostrzeżenie nocne |
 | `No new high-risk daytime hours` | Nie ma nowych godzin do zgłoszenia w dziennym oknie |
-| `Outside daytime alert window` | Uruchomienie poza godzinami alertów dziennych |
-| `Forecast unavailable or stale` | API niedostępne lub prognoza starsza niż 6 godzin; wiadomości nie wysłano |
+| `No high-risk hours in overnight forecast subset` | Wieczorna kontrola nie znalazła godzin powyżej progu w zwróconym zestawie |
+| `Outside daytime alert window` | Uruchomienie odbyło się poza godzinami alertów dziennych |
+| `Forecast unavailable or stale; no messages sent` | Brak dostępnej prognozy lub dane starsze niż 6 godzin |
 
-Ręczny test poza porannym lub wieczornym oknem czasowym **może nie wysłać żadnej wiadomości**. To normalne i nie musi oznaczać błędu.
+**Zielony status GitHub Actions nie oznacza, że Telegram musi otrzymać wiadomość.** Bot może zakończyć działanie prawidłowo, nie wysyłając niczego — np. poza oknem raportu lub bez nowych godzin ryzyka.
 
-### 7. Zostaw bota włączonego
+### 7. Zostaw harmonogram włączony
 
-Workflow zawiera harmonogram:
+Workflow zawiera:
 
 ```yaml
 schedule:
   - cron: '*/30 * * * *'
 ```
 
-GitHub interpretuje `cron` w UTC. Ponieważ skrypt sam odczytuje czas `Europe/Warsaw`, poprawnie rozpoznaje polskie godziny zimą i latem. Harmonogram uruchamia się nominalnie o pełnej godzinie i o wpół (UTC), ale nie gwarantuje dokładności. GitHub może także automatycznie wyłączyć zaplanowane workflows w nieaktywnych repozytoriach publicznych; warto okresowo kontrolować zakładkę Actions.
+GitHub interpretuje `cron` w **UTC**, a Python stosuje strefę **`Europe/Warsaw`** do ustalania okien powiadomień (uwzględniając zmianę czasu zimowego i letniego).
 
-## Jak bot pamięta wcześniejsze powiadomienia?
+GitHub może opóźniać lub pomijać zaplanowane uruchomienia. W nieaktywnych publicznych repozytoriach zaplanowane workflow mogą zostać automatycznie wyłączone — warto co jakiś czas zajrzeć do zakładki **Actions**.
 
-Bot zapisuje `alert_state.json` z polami takimi jak:
+## 🧠 Jak bot zapamiętuje wcześniejsze powiadomienia?
+
+Skrypt zapisuje lokalny plik `alert_state.json`, m.in. z polami:
 
 - `last_daily_report` — data ostatniego raportu porannego;
-- `last_night_check` — data wykonanej kontroli nocnej;
-- `notified_hours` — godziny zgłoszone w alertach dziennych.
+- `last_night_check` — data wykonania kontroli nocnej;
+- `notified_hours` — zgłoszone wcześniej godziny alertów dziennych.
 
-Plik jest przenoszony między uruchomieniami za pomocą **GitHub Actions Cache**. W logach szukaj `Cache restored successfully` oraz informacji o zapisie cache.
+GitHub Actions przywraca i zapisuje ten plik za pomocą **Actions Cache**. W logach możesz zobaczyć `Cache restored successfully`.
 
-**Ograniczenie:** GitHub Actions Cache nie jest trwałą bazą danych. Cache może zostać usunięty, wygasnąć lub zostać przywrócony w starszej wersji. W takim przypadku mogą pojawić się duplikaty. Jest to rozwiązanie wygodne do prywatnego eksperymentu, ale nie daje ścisłej gwarancji dostarczenia dokładnie jednej wiadomości. Jeśli bot ma działać niezawodnie dla wielu osób, warto przenieść stan do trwałego magazynu danych.
+> [!WARNING]
+> **GitHub Actions Cache nie jest trwałą bazą danych.** Zapis może wygasnąć, zostać usunięty albo przywrócić starszy stan. Możliwe są powtórne wiadomości lub utrata informacji o poprzednich alertach. Mechanizm jest wystarczający do eksperymentu, ale nie gwarantuje dostarczenia dokładnie jednej wiadomości.
 
-## Jak udostępnić to innym?
+## 🔒 Bezpieczeństwo i ograniczenia
 
-**Najprostszy i najbezpieczniejszy wariant: każda osoba uruchamia własną kopię repozytorium i tworzy własnego bota Telegram.** Każdy ustawia własne sekrety i opcjonalny adres. Wtedy nie udostępniasz nikomu swojego tokenu ani prywatnego Chat ID.
+- Źródło prognozy: [`https://zapachkrakowa.pl/api/v1/forecast`](https://zapachkrakowa.pl/api/v1/forecast); [dokumentacja API](https://zapachkrakowa.pl/api/docs).
+- Bot prosi o prognozę do **72 godzin**, ale do wiadomości wykorzystuje wybrane pozycje `riskiest_hours`.
+- Próg `p_elevated >= 0.5` odnosi się do **udziału scenariuszy modelowych**, nie do potwierdzonego pomiarem prawdopodobieństwa wystąpienia zapachu.
+- Skrypt pomija prognozę, gdy API oznacza ją jako niedostępną albo gdy jej wiek przekracza **6 godzin**.
+- Obecna wersja obsługuje **jeden adres i jeden Telegram Chat ID na uruchomienie**. Nie prowadzi rejestracji subskrybentów.
+- Nie ma gwarancji, że prognoza wykryje każdy epizod lub że GitHub uruchomi bota na czas.
+- Trzymaj token w GitHub Secrets. Jeśli wycieknie, unieważnij go w BotFather i ustaw nowy sekret.
 
-Bieżąca wersja obsługuje **jeden `TELEGRAM_CHAT_ID` i jeden adres na uruchomienie**. Samo udostępnienie komuś linku do Twojego bota nie zapisze tej osoby jako odbiorcy powiadomień. Wspólny bot dla wielu użytkowników wymaga rozbudowy o rejestrację subskrybentów, ich lokalizacje i osobne preferencje.
+## 🛠️ Rozwiązywanie problemów
 
-## Ograniczenia i bezpieczeństwo
+**Raport pojawił się później niż 07:00**  
+GitHub Actions może opóźniać zaplanowane uruchomienia. SmrodoBot wysyła raport przy pierwszym udanym uruchomieniu w oknie **07:00–08:59 czasu polskiego**, o ile prognoza jest dostępna i aktualna oraz raport nie został już zapisany jako wysłany. Jeśli w tym oknie nie dojdzie do odpowiedniego uruchomienia, raport zostanie pominięty — bot nie nadrabia go po 09:00.
 
-- API: `https://zapachkrakowa.pl/api/v1/forecast`; dokumentacja: [zapachkrakowa.pl/api/docs](https://zapachkrakowa.pl/api/docs).
-- Skrypt pobiera prognozę z parametrem `hours=72`, ale do wiadomości wykorzystuje przede wszystkim pole `riskiest_hours`, które nie musi zawierać pełnej osi czasu.
-- Próg alertu: `p_elevated >= 0.5` (udział scenariuszy modelowych; nie należy go automatycznie interpretować jako zweryfikowanego prawdopodobieństwa wystąpienia odoru).
-- Nie ma gwarancji, że prognoza wykryje wszystkie epizody zapachowe lub że zdąży ostrzec przed ich początkiem.
-- Jeśli zagrożenie pojawi się w prognozie dopiero po wykonaniu wieczornej kontroli, obecna wersja może nie wysłać kolejnego ostrzeżenia przed nocą.
-- Jeśli nie ma świeżej prognozy, bot nie wysyła raportu ani alertu — brak wiadomości nie jest sygnałem bezpieczeństwa.
-- Trzymaj token w GitHub Secrets. Jeśli token wycieknie, unieważnij go przez BotFather i zaktualizuj sekret.
+**Workflow jest zielony, ale nie ma wiadomości**  
+Sprawdź log kroku **Run SmrodoBot**. Brak wiadomości może być prawidłowy: poza oknem raportu, bez nowego ryzyka lub po wcześniejszym wysłaniu powiadomienia.
 
-## Rozwiązywanie problemów
+**Workflow jest czerwony (`Failure`)**  
+Otwórz nieudane uruchomienie → **check-forecast → Run SmrodoBot**. Znajdź `Traceback`, `Error` lub `IndentationError`. W przypadku błędu wcięć sprawdź spacje w `alert.py`. Same ostrzeżenia o przestarzałej wersji Node.js nie muszą być przyczyną niepowodzenia.
 
-**Nie przychodzi żadna wiadomość:** sprawdź, czy uruchomiłeś rozmowę z botem (`/start`), czy sekrety mają poprawne nazwy, czy Chat ID jest prawidłowy oraz czy log nie pokazuje braku ryzyka lub nieaktualnej prognozy.
+**`Cache not found`**  
+Przy pierwszym uruchomieniu jest to normalne. Jeśli pojawia się stale, sprawdź kroki **Restore alert history** i **Save alert history**.
 
-**`Cache not found`:** przy pierwszym uruchomieniu to normalne. Jeśli powtarza się po wcześniejszym zapisie, sprawdź krok `Save alert history`.
+**Przychodzą duplikaty**  
+Sprawdź kroki cache. Historia nie jest przechowywana w trwałej bazie danych.
 
-**Raport pojawił się później niż 08:00:** GitHub Actions może opóźniać uruchomienia; skrypt dopuszcza poranny raport w oknie 08:00–09:59.
+**Nie przychodzi żadna wiadomość**  
+Upewnij się, że wysłano `/start` do bota, oba sekrety są poprawne, Chat ID wskazuje właściwy czat, a prognoza jest aktualna.
 
-**Pojawiają się duplikaty:** sprawdź `Restore alert history` i `Save alert history`; pamięć oparta na cache nie jest niezawodnym mechanizmem dokładnie-jednokrotnego wysyłania.
+**Nie przychodzi ostrzeżenie nocne**  
+W obecnej wersji wiadomość nocna jest warunkowa. Bot może nie wykryć godzin powyżej progu w zestawie `riskiest_hours`; ponadto po zapisaniu wieczornej kontroli nie sprawdza ponownie tej samej nocy. Brak ostrzeżenia **nie oznacza bezpieczeństwa**.
 
-**Nie ma raportu nocnego:** to zamierzone, jeśli w danych zwróconych przez API nie wykryto godzin spełniających próg. Nie oznacza to gwarantowanego braku zapachu.
+## 🤝 Udostępnianie projektu
+
+Najprościej: udostępnij link do [szablonu SmrodoBot](https://github.com/g-dital/smrodobot). Każda osoba wybiera **Use this template**, tworzy własnego bota przez BotFather i dodaje swoje GitHub Secrets. Nie przekazuj nikomu własnego tokenu ani prywatnego Chat ID.
 
 ---
 
-**Projekt:** SmrodoBot v0.3 · Python 3.12 · GitHub Actions · Telegram Bot API · Zapach Krakowa.
+**SmrodoBot v0.3** · Python 3.12 · GitHub Actions · Telegram Bot API · Zapach Krakowa  
+Projekt eksperymentalny — nie zastępuje oficjalnych informacji ani pomiarów środowiskowych.
