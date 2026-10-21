@@ -33,6 +33,9 @@ jobs:
           restore-keys: |
             smrodobot-state-
 
+      - name: Run automated tests
+        run: python -m unittest -v test_alert.py
+
       - name: Run SmrodoBot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
