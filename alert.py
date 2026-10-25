@@ -79,16 +79,16 @@ def recent_notified(values, now):
             continue
         try:
             parsed = datetime.fromisoformat(value)
-            if parsed.tzinfo is not None and parsed >= cutoff:
-                result.add(value)
         except ValueError:
-            # Accept legacy keys from v0.3 until they naturally expire.
-            try:
-                legacy = datetime.strptime(value, '%Y-%m-%dT%H').replace(tzinfo=TZ)
-                if legacy >= cutoff:
-                    result.add(value)
-            except ValueError:
+            continue
+        if parsed.tzinfo is None:
+            # v0.3 stored local-hour keys without a UTC offset.
+            # Treat those as Europe/Warsaw local time during migration.
+            if len(value) != 13 or value[10] != 'T':
                 continue
+            parsed = parsed.replace(tzinfo=TZ)
+        if parsed >= cutoff:
+            result.add(value)
     return result
 
 
