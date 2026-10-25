@@ -1,0 +1,59 @@
+name: SmrodoBot State Integration Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: smrodobot-state
+  cancel-in-progress: false
+
+jobs:
+  test-state:
+    if: github.ref == 'refs/heads/develop-v05'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout state branch
+        uses: actions/checkout@v4
+        with:
+          ref: bot-state
+          path: state-repo
+          persist-credentials: true
+
+      - name: Write harmless integration marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('state-repo/state_integration_test.json')
+          path.write_text(json.dumps({'integration_test': 'passed', 'version': 'v0.5'}, indent=2) + '\n', encoding='utf-8')
+          print('Test marker prepared')
+          PY
+          cd state-repo
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add state_integration_test.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Test bot-state write access'
+            git push origin HEAD:bot-state
+          fi
+
+      - name: Verify state persisted on remote branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd state-repo
+          git fetch origin bot-state
+          git show origin/bot-state:state_integration_test.json > /tmp/state_integration_test.json
+          python - <<'PY'
+          import json
+          with open('/tmp/state_integration_test.json', encoding='utf-8') as f:
+              data = json.load(f)
+          assert data == {'integration_test': 'passed', 'version': 'v0.5'}, data
+          print('PASS: bot-state write and remote read verified')
+          PY
