@@ -9,13 +9,14 @@ from zoneinfo import ZoneInfo
 API = 'https://zapachkrakowa.pl/api/v1/forecast'
 TZ = ZoneInfo('Europe/Warsaw')
 STATE_FILE = Path('alert_state.json')
+ALERT_THRESHOLD = 0.65  # Minimum model-scenario share for daytime/night alerts
 
 
 def request_json(url, data=None):
     req = urllib.request.Request(
         url,
         data=data,
-        headers={'User-Agent': 'SmrodoBot/0.4', 'Accept': 'application/json'},
+        headers={'User-Agent': 'SmrodoBot/0.5', 'Accept': 'application/json'},
         method='POST' if data is not None else 'GET',
     )
     with urllib.request.urlopen(req, timeout=30) as response:
@@ -46,7 +47,10 @@ def load_state():
 
 
 def save_state(state):
-    STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding='utf-8')
+    # Write atomically to reduce the risk of corrupting state on interruption.
+    temporary = STATE_FILE.with_name(STATE_FILE.name + '.tmp')
+    temporary.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding='utf-8')
+    temporary.replace(STATE_FILE)
 
 
 def forecast_rows(data, now):
@@ -105,6 +109,7 @@ def main():
         return
 
     rows = forecast_rows(data, now)
+    print(f'Forecast valid; age={status.get("age_hours")}h, selected_hours={len(rows)}, alert_threshold={ALERT_THRESHOLD:.0%}')
     place = data.get('location', location)
 
     # Morning report, sent once between 07:00 and 08:59 local time.
@@ -114,7 +119,7 @@ def main():
         if remaining:
             lines.append('Godziny wyróżnione przez model:')
             for hour, p, _ in remaining:
-                icon = '🔴' if p >= 0.5 else '🟡' if p >= 0.25 else '🟢'
+                icon = '🔴' if p >= ALERT_THRESHOLD else '🟡' if p >= 0.25 else '🟢'
                 lines.append(f'{icon} {hour:%H:%M} — {p:.0%}')
         else:
             lines.append('API nie wskazuje godzin z pozostałej części dzisiejszego dnia na liście najbardziej ryzykownych.')
@@ -128,7 +133,7 @@ def main():
     if 21 <= now.hour < 23:
         start = datetime.combine(now.date(), time(22), tzinfo=TZ)
         end = datetime.combine(now.date() + timedelta(days=1), time(8), tzinfo=TZ)
-        overnight = [r for r in rows if start <= r[0] < end and r[1] >= 0.5]
+        overnight = [r for r in rows if start <= r[0] < end and r[1] >= ALERT_THRESHOLD]
         notified_night = recent_notified(state.get('notified_night_hours', []), now)
         new_night = [r for r in overnight if not already_notified(r[0], notified_night)]
         if new_night:
@@ -156,7 +161,7 @@ def main():
         return
 
     horizon = now + timedelta(hours=2)
-    risky = [r for r in rows if now <= r[0] <= horizon and r[1] >= 0.5]
+    risky = [r for r in rows if now <= r[0] <= horizon and r[1] >= ALERT_THRESHOLD]
     notified = recent_notified(state.get('notified_hours', []), now)
     new = [r for r in risky if not already_notified(r[0], notified)]
     if new:
