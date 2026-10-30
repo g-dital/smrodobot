@@ -1,7 +1,5 @@
 {
-  "notified_hours": [
-    "2026-10-28T19:00+01:00"
-  ],
+  "notified_hours": [],
   "notified_night_hours": [
     "2026-10-27T23:00+01:00",
     "2026-10-28T00:00+01:00",
